@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mines Predictor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-white p-4">
+  <div class="max-w-4xl mx-auto space-y-6">
+    <h1 class="text-3xl font-bold text-center">💣 Mines Predictor</h1>
+
+    <div class="flex flex-col sm:flex-row gap-2">
+      <input id="seed" type="text" placeholder="Enter server seed..." class="flex-1 px-3 py-2 rounded text-black" />
+      <button onclick="runSimulation()" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Run Simulation</button>
+    </div>
+
+    <div id="results-section" class="hidden">
+      <div class="overflow-x-auto">
+        <table class="table-auto w-full border-collapse border border-gray-600 text-sm">
+          <thead>
+            <tr>
+              <th class="border border-gray-600 px-4 py-2">Mines</th>
+              <th class="border border-gray-600 px-4 py-2">Stop After</th>
+              <th class="border border-gray-600 px-4 py-2">Win Rate</th>
+            </tr>
+          </thead>
+          <tbody id="results-table"></tbody>
+        </table>
+      </div>
+
+      <canvas id="results-chart" class="mt-6"></canvas>
+
+      <button onclick="exportCSV()" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded mt-4">Export CSV</button>
+
+      <div id="best-board-section" class="mt-6">
+        <h2 class="text-xl font-bold">Best Simulation Board</h2>
+        <div id="best-board" class="grid grid-cols-5 gap-1 mt-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const mineCounts = [1, 3, 5, 7, 10];
+    const stopAfter = [1, 2, 3, 5, 10];
+    let results = [];
+    let chartInstance = null;
+
+    function simulateMineGame(mineCount, safeReveals) {
+      let board = Array(25).fill("safe");
+      let minePositions = new Set();
+      while (minePositions.size < mineCount) {
+        minePositions.add(Math.floor(Math.random() * 25));
+      }
+      minePositions.forEach((pos) => (board[pos] = "mine"));
+
+      let revealed = 0;
+      for (let i = 0; i < board.length; i++) {
+        if (board[i] === "safe") revealed++;
+        if (revealed === safeReveals) return { win: true, board };
+      }
+      return { win: false, board };
+    }
+
+    function runSimulation() {
+      const seed = document.getElementById("seed").value.trim();
+      if (!seed) {
+        alert("Please enter a server seed");
+        return;
+      }
+
+      results = [];
+      let simsPerCombo = 1000;
+      let best = { winRate: 0, mines: 0, stopAfter: 0, board: [] };
+
+      for (let m of mineCounts) {
+        for (let s of stopAfter) {
+          let wins = 0;
+          let exampleBoard = [];
+          for (let i = 0; i < simsPerCombo; i++) {
+            const { win, board } = simulateMineGame(m, s);
+            if (win) wins++;
+            if (i === 0) exampleBoard = board;
+          }
+          let winRate = ((wins / simsPerCombo) * 100).toFixed(2);
+          results.push({ mines: m, stopAfter: s, winRate });
+          if (parseFloat(winRate) > best.winRate) {
+            best = { winRate: parseFloat(winRate), mines: m, stopAfter: s, board: exampleBoard };
+          }
+        }
+      }
+
+      renderTable();
+      renderChart();
+      renderBestBoard(best);
+      document.getElementById("results-section").classList.remove("hidden");
+    }
+
+    function renderTable() {
+      const tableBody = document.getElementById("results-table");
+      tableBody.innerHTML = "";
+      results.forEach(r => {
+        tableBody.innerHTML += `
+          <tr>
+            <td class="border border-gray-600 px-4 py-2">${r.mines}</td>
+            <td class="border border-gray-600 px-4 py-2">${r.stopAfter}</td>
+            <td class="border border-gray-600 px-4 py-2">${r.winRate}%</td>
+          </tr>
+        `;
+      });
+    }
+
+    function renderChart() {
+      const ctx = document.getElementById("results-chart").getContext("2d");
+      const labels = results.map(r => `${r.mines} mines, stop ${r.stopAfter}`);
+      const data = results.map(r => r.winRate);
+
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Win Rate (%)',
+            data: data,
+            backgroundColor: 'rgba(34,197,94,0.7)'
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, max: 100 }
+          }
+        }
+      });
+    }
+
+    function renderBestBoard(best) {
+      const boardDiv = document.getElementById("best-board");
+      boardDiv.innerHTML = "";
+      best.board.forEach(tile => {
+        boardDiv.innerHTML += `<div class="w-12 h-12 flex items-center justify-center border border-gray-600 text-2xl">${tile === "safe" ? "✅" : "❌"}</div>`;
+      });
+    }
+
+    function exportCSV() {
+      let csv = "Mines,Stop After,Win Rate\n";
+      results.forEach(r => {
+        csv += `${r.mines},${r.stopAfter},${r.winRate}%\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "mines_results.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>
